@@ -1,5 +1,5 @@
 ---
-title: 'DATA 612: Project 1'
+title: 'DATA 612: Project 1| Global Baseline Predictors and RMSE '
 author: "Javern Wilson"
 date: "June 3, 2019"
 output: 
@@ -7,6 +7,8 @@ output:
     theme: yeti
 
 ---
+
+**This recommender system is built to recommend movies to users based on user ratings. The dataset was collected from [grouplens.org](https://grouplens.org/datasets/movielens/100k/).**
 
 ```{r message=FALSE, warning=FALSE}
 library(tidyverse)
@@ -39,7 +41,7 @@ UI_matrix <- sparseMatrix(
  )
 ```
 
-### Training and Testing Datasets (80%:20%)
+### Training and Testing Datasets (80:20)
 ```{r}
 
 train <- sample(x = c(T, F), size = nrow(UI_matrix), replace = T, prob = c(0.8, 0.2)) 
@@ -53,6 +55,7 @@ testing_data <- UI_matrix[-train, ]
 ### Raw Average
 ```{r}
 avg_train <- mean(training_data@x)
+avg_train
 ```
 
 ### [RMSE](https://stackoverflow.com/questions/26237688/rmse-root-mean-square-deviation-calculation-in-r)
@@ -62,8 +65,11 @@ RMSE <- function(m, o){
   sqrt(mean((m - o)^2))
 }
 
-RMSE(avg_train, training_data)
-RMSE(avg_train, testing_data)
+train_rmse <- RMSE(avg_train, training_data)
+train_rmse
+
+test_rmse <- RMSE(avg_train, testing_data)
+test_rmse
 
 ```
 
@@ -86,10 +92,10 @@ baseline_predictors[baseline_predictors > 5] <- 5
 ```
 
 
-### RMSE for Baseline Predictors (test and train)
+### RMSE for Baseline Predictors (train and test)
 
 ```{r message=FALSE, warning=FALSE}
-RMSE(avg_train, baseline_predictors)
+base_train_rmse <- RMSE(avg_train, baseline_predictors)
 
 avg_test <- mean(testing_data@x)
 
@@ -98,10 +104,11 @@ test_item_bias <- colMeans(testing_data) - avg_test
 
 test_baseline_predictors <- avg_test + test_item_bias + test_user_bias
 
+#ratings cannot be lower than 1 or higher than 5
 test_baseline_predictors[test_baseline_predictors < 1] <- 1
 test_baseline_predictors[test_baseline_predictors > 5] <- 5
 
-RMSE(avg_test, test_baseline_predictors)
+base_test_rmse <- RMSE(avg_test, test_baseline_predictors)
 
 ```
 
@@ -109,14 +116,12 @@ RMSE(avg_test, test_baseline_predictors)
 ### Summary
 
 ```{r}
+(1 - (base_test_rmse / test_rmse)) * 100
 
-(1 - (2.499563 / 3.483128)) * 100
-
-(1 - (2.510424 / 3.483742)) * 100
-
+(1 - (base_train_rmse / train_rmse)) * 100
 ```
 
-Based on the calculations above, the recommender system improved by `28%` with the test data and `27%` with the training data when making predictions.
+Based on the calculations above, the recommender system improved by `27%` with the test data and `28%` with the training data when making predictions.
 
 
 ### Sources
