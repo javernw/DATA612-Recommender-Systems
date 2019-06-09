@@ -1,0 +1,128 @@
+---
+title: 'DATA 612: Project 1'
+author: "Javern Wilson"
+date: "June 3, 2019"
+output: 
+  html_document:
+    theme: yeti
+
+---
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(Matrix)
+```
+
+### Read Data into R
+```{r}
+
+ratings <- read.csv("https://raw.githubusercontent.com/javernw/DATA612-Recommender-Systems/master/ratings.csv", header = T, stringsAsFactors = F)
+
+#copy ratings
+tbl_ratings <- ratings %>% select(-timestamp)
+tbl_ratings$userId <- as.factor(tbl_ratings$userId)
+tbl_ratings$movieId <- as.factor(tbl_ratings$movieId)
+
+
+
+```
+
+
+### Create User-Item Matrix
+```{r}
+
+UI_matrix <- sparseMatrix(
+  i = as.integer(tbl_ratings$userId), 
+  j = as.integer(tbl_ratings$movieId), 
+  x = tbl_ratings$rating, 
+  dimnames = list(levels(tbl_ratings$userId), levels(tbl_ratings$movieId))
+ )
+```
+
+### Training and Testing Datasets (80%:20%)
+```{r}
+
+train <- sample(x = c(T, F), size = nrow(UI_matrix), replace = T, prob = c(0.8, 0.2)) 
+training_data <- UI_matrix[train, ] 
+
+testing_data <- UI_matrix[-train, ]
+
+```
+
+
+### Raw Average
+```{r}
+avg_train <- mean(training_data@x)
+```
+
+### [RMSE](https://stackoverflow.com/questions/26237688/rmse-root-mean-square-deviation-calculation-in-r)
+```{r}
+
+RMSE <- function(m, o){
+  sqrt(mean((m - o)^2))
+}
+
+RMSE(avg_train, training_data)
+RMSE(avg_train, testing_data)
+
+```
+
+### Bias for each user and item
+```{r}
+user_bias <- rowMeans(training_data) - avg_train
+item_bias <- colMeans(training_data) - avg_train
+```
+
+
+
+### Baseline Predictors
+```{r message=FALSE, warning=FALSE}
+baseline_predictors <- user_bias + item_bias + avg_train
+
+#ratings cannot be lower than 1 or higher than 5
+baseline_predictors[baseline_predictors < 1] <- 1
+baseline_predictors[baseline_predictors > 5] <- 5
+
+```
+
+
+### RMSE for Baseline Predictors (test and train)
+
+```{r message=FALSE, warning=FALSE}
+RMSE(avg_train, baseline_predictors)
+
+avg_test <- mean(testing_data@x)
+
+test_user_bias <- rowMeans(testing_data) - avg_test
+test_item_bias <- colMeans(testing_data) - avg_test
+
+test_baseline_predictors <- avg_test + test_item_bias + test_user_bias
+
+test_baseline_predictors[test_baseline_predictors < 1] <- 1
+test_baseline_predictors[test_baseline_predictors > 5] <- 5
+
+RMSE(avg_test, test_baseline_predictors)
+
+```
+
+
+### Summary
+
+```{r}
+
+(1 - (2.499563 / 3.483128)) * 100
+
+(1 - (2.510424 / 3.483742)) * 100
+
+```
+
+Based on the calculations above, the recommender system improved by `28%` with the test data and `27%` with the training data when making predictions.
+
+
+### Sources
+
+[https://stackoverflow.com/questions/26237688/rmse-root-mean-square-deviation-calculation-in-r](https://stackoverflow.com/questions/26237688/rmse-root-mean-square-deviation-calculation-in-r)
+
+[https://stackoverflow.com/questions/51467276/how-to-find-the-column-means-for-a-sparse-matrix-excluding-0-values](https://stackoverflow.com/questions/51467276/how-to-find-the-column-means-for-a-sparse-matrix-excluding-0-values)
+
+
