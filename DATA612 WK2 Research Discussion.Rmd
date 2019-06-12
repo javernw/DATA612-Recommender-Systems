@@ -1,0 +1,56 @@
+---
+title: "DATA612: Week 2 Research Discussion Assignment 1"
+name: "Javern Wilson"
+output: html_notebook
+---
+
+**Choose one commercial recommender and describe how you think it works (content-based, collaborative filtering, etc). Does the technique deliver a good experience or are the recommendations off-target?**
+
+### HULU's Recommender System
+
+As the Internet continue to evolve, information is very unlimited and people become overwhelmed and confused about what they are looking for. With the help of recommender systems, a lot of useful information can be filtered out to help users discover and select the information that is of interest to them. There are thousands of videos available on Hulu and it may be difficult for users to find videos that best match their interests. Therefore, the first goal of Hulu's recommendation system is to help users find content which will be of interest to them. A lot of Hulu's content is based on episodes from shows (which are obviously related since they belong to a show) and so they recommend shows to users instead of single videos. Their content is divided into two sections: on-air and library shows. Majority of the content is on-air shows. Library shows are recommended when summer or weekend is around.
+
+Hulu's recommendation engine has been built using a **collaborative filtering** approach, called *neural autoregressive distribution estimator for collaborative filtering (CF-NADE)*. This method is an application of deep learning in recommendation systems, using explicit feedback where users give each item an explicit rating. Collaborative filtering depends on user behavior data so that it can predict user preferences. Specifically, there are two types of collaborative filtering methods: *User-based and Item-based.* User-based assumes a user will like an item liked by other users with similar preferences. On the other hand, item-based collaborative filtering assumes a user will prefer items similar to ones in their watch or browse history. **Hulu uses the Item-based collaborative filtering algorithm**. 
+
+What drives most recommendation systems is user behavior data. There are two main types: *implicit and explicit user feedback data*. Explicit user feedback data primarily includes user voting data and can show if the user likes the show. Meanwhile implicit feedback data includes information on users watching, browsing, searching and the like but does not give a clue if user likes the show or not. As the quantity of implicit data at Hulu far outweighs the amount of explicit feedback, **Hulu is designed primarily to work with implicit feedback data.**
+
+### Architecture
+
+There are 5 modules in the development of Hulu's recommender system.
+
+  1. User Profile Builder - Building the user's profile based on preferences
+  2. Recommendation Core - Generate general recommendations similar so the shows in the user's history/profile.
+  3. Filtering - Shows are filtered to recommedations can be more accurate.
+  4. Ranking - Rank shows that closely match user preferences or what they might like.
+  5. Explanation - A caption stating why a particular show was recommended. For instance, if you watched "The Rookie" Hulu would say something like "Because you watched The Rookie, we recommend 911".
+  
+
+<img class="img img-thumbnail img-responsive" style="width:99%;" src="https://github.com/javernw/DATA612-Recommender-Systems/blob/master/hulu_architecture.PNG?raw=true" alt="Architecture of Hulu">
+
+
+### What's Next?
+
+Hulu's mobile app give subscribers better control over the way the streaming service presents recommendations and suggested shows. Users are able to tell Hulu to stop suggesting content they have no interest in. They can also remove items from their history. When that happens, Hulu's recommendation engine will essentially forget that the user ever watched the show or movie in question. 
+
+<img class="img img-thumbnail img-responsive" style="width:99%;" src="https://github.com/javernw/DATA612-Recommender-Systems/blob/master/hulu.PNG?raw=true" alt="Architecture of Hulu">
+
+
+<br/> <br/>
+
+**Does the technique deliver a good experience or are the recommendations off-target?**
+
+For me personally, Hulu does really well with recommendations. For example, when I'm watching a movie and it finishes, Hulu will display another movie of similar taste that will show next on autoplay. The recommendations usually what I like. Also, Hulu comes with watch history, so you can easily keep the track of movies and videos you like to watch.
+
+<br/> <br/>
+
+### Sources
+
+[http://www.josemalvarez.es/web/2012/04/23/hulus-recommendation-system/](http://www.josemalvarez.es/web/2012/04/23/hulus-recommendation-system/)
+
+[https://rethinkresearch.biz/articles/hulu-hints-recommendations-are-dead/](https://rethinkresearch.biz/articles/hulu-hints-recommendations-are-dead/
+)
+
+[https://www.theverge.com/2018/5/16/17360344/hulu-recommendations-watch-history-new-guide](https://www.theverge.com/2018/5/16/17360344/hulu-recommendations-watch-history-new-guide)
+
+[https://www.cnblogs.com/zhenjing/articles/hulu-recommendation-system.html](https://www.cnblogs.com/zhenjing/articles/hulu-recommendation-system.html)
+
