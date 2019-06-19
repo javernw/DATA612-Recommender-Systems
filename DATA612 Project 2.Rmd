@@ -1,0 +1,250 @@
+---
+title: "DATA612 Project 2 | Content-Based and Collaborative Filtering "
+author: "Javern Wilson"
+date: "June 13, 2019"
+output: html_notebook
+---
+
+## Book Recommendation from [Goodreads](https://www.goodreads.com/)
+
+Goodreads is a free social cataloging website that allows individuals to freely search its database of books, annotations, reviews and ratings. People can check out personalized recommendations and find out if a books is a good for them. This dataset contain 10,000 books and 50,000+ users. Ratings are 1 - 5  and each users rated at least 2 books. Data can be found [here](https://github.com/zygmuntz/goodbooks-10k). 
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(Matrix)
+library(recommenderlab)
+library(kableExtra)
+library(gridExtra)
+```
+
+#### Data Prepocessing
+```{r}
+book_ratings <- read.csv("https://raw.githubusercontent.com/zygmuntz/goodbooks-10k/master/ratings.csv", sep = ",", header = T, stringsAsFactors = F)
+
+book_titles <- read.csv("https://raw.githubusercontent.com/zygmuntz/goodbooks-10k/master/books.csv", sep = ",", header = T, stringsAsFactors = F) %>% select(book_id, title)
+
+book_titles$book_id <- as.factor(book_titles$book_id)
+
+# table dimensions
+dim(book_ratings)
+
+# first few ratings for books
+head(book_ratings, 10)
+```
+
+The size of this dataset: 
+```{r}
+object.size(book_ratings)
+```
+
+Only a subset of the data will be used to build the recommender systems.
+
+```{r}
+book_ratings$user_id <- as.factor(book_ratings$user_id)
+book_ratings$book_id <- as.factor(book_ratings$book_id)
+
+bmatrix <- as(book_ratings, "realRatingMatrix")
+dim(bmatrix@data)
+
+```
+
+
+#### Similarity Matrix
+
+Users
+```{r}
+sim <- similarity(bmatrix[1:10, ], method = "cosine", which = "users")
+image(as.matrix(sim), main = "User Similarity")
+```
+
+
+Books
+```{r}
+sim2 <- similarity(bmatrix[ ,1:10], method = "cosine", which = "items")
+image(as.matrix(sim2), main = "Item Similarity")
+
+
+```
+
+Going forward, we will build recommender systems using data that consist of users who rated at least 150 books and books rated at least 300 times.
+```{r}
+# users who rated at least 100 books and books rated at least 100 times
+bmatrix <- bmatrix[rowCounts(bmatrix) > 150, colCounts(bmatrix) > 300]
+bmatrix
+
+```
+
+#### How are the ratings disributed?
+```{r}
+tbl_ratings <- as.data.frame(table(as.vector(bmatrix@data)))
+tbl_ratings
+tbl_ratings <- tbl_ratings[-1,] #0 means missing values so remove missing values
+ggplot(tbl_ratings, aes(x = Var1, y = Freq, fill = Var1)) + geom_bar(stat = "identity") + ggtitle("Distribution of Book Ratings")
+```
+
+#### Most rated books
+```{r}
+
+rated_count <- colCounts(bmatrix)
+
+read_book <- data.frame(
+  book_id = names(rated_count),
+  read = rated_count
+)
+
+top_books <- 
+  inner_join(read_book, book_titles, by = "book_id") %>% 
+  arrange(desc(read)) %>% 
+  select(-book_id) %>% 
+  head(10) %>% 
+  ggplot(aes(x = title, y = read)) + geom_bar(stat = "identity", fill = "lightblue") + geom_text(aes(label=read), vjust=-0.3, size=3.5) + ggtitle("Top 10 Rated Books") +  coord_flip()
+top_books
+
+```
+
+
+#### Average book ratings
+
+```{r}
+
+avg_book_ratings <- data.frame("avg_rating" = colMeans(bmatrix)) %>% 
+  ggplot(aes(x = avg_rating)) + 
+  geom_histogram(color = "black", fill = "lightgreen") + 
+  ggtitle("Distribution of Average Ratings for Books")
+
+avg_book_ratings
+
+
+```
+
+
+Matrix of first 100 users and 100 books. Darker spots represents the highest rated books. 
+```{r}
+image(bmatrix[1:100, 1:100], main = "First 100 users and books")
+```
+
+
+#### Top 1% of readers and books in the book matrix
+```{r}
+min_readers <- quantile(rowCounts(bmatrix), 0.99)
+min_books <- quantile(colCounts(bmatrix), 0.99)
+
+a <- image(bmatrix[rowCounts(bmatrix) > min_readers, colCounts(bmatrix) > min_books], main = "Non-Normalized")
+
+# to eliminate bias therefore average rating would be 0
+book_norm <- normalize(bmatrix)
+
+b <- image(book_norm[rowCounts(book_norm) > min_readers, colCounts(book_norm) > min_books], main = "Normalized")
+grid.arrange(a, b, ncol = 2)
+```
+
+
+
+#### Training and Testing Datasets
+```{r}
+train <- sample(x = c(T, F), size = nrow(bmatrix), replace = T, prob = c(0.8, 0.2)) 
+books_train <- bmatrix[train, ] 
+
+books_test <- bmatrix[-train, ]
+
+```
+
+
+### Item-Item Collaborative Filtering
+
+A filtering method in which the similarity between items is calculated using people's ratings of those items. In other words the algorithm recommends items similar to the user's previous selections. In the algorithm, the similarities between different items in the dataset are calculated by using one of a number of similarity measures, and then these similarity values are used to predict ratings for user-item pairs not present in the dataset.
+
+```{r message=FALSE, warning=FALSE}
+
+Imodel <- Recommender(data = books_train, method = "IBCF")
+
+Imodel
+
+```
+
+Predict with test data.
+```{r}
+
+Ipredict <- predict(Imodel, newdata = books_test, n = 5) %>% list()
+
+Ipredict
+```
+
+Books recommended for specific users simliar to a specified item or item chosen by user.
+```{r message=FALSE, warning=FALSE}
+# function created to display recommended similar books to users
+item_recc_books <- function(i){
+p <- Ipredict[[1]]@items[[i]]
+p <- data.frame("guess" = as.factor(p))
+p <- inner_join(p, book_titles, by = c("guess" = "book_id")) %>% select(title)
+r <- data.frame("name" = as.factor(i))
+r <- inner_join(r, book_titles, by = c("name" = "book_id")) %>% select(title)
+print(paste("Books similar to --", r))
+
+return(as.list(p))
+}
+
+item_recc_books(5); item_recc_books(200); item_recc_books(18)
+
+```
+
+
+```{r}
+
+ibcf <- table(unlist(Ipredict[[1]]@items)) %>% barplot(main = "Distribution of the number of items for IBCF")
+
+```
+
+Some books were recommended more often than the others as seen in the plot above.
+
+
+### User-User Collaborative Filtering 
+
+Recommends items that are similar purchased by the same people. The algorithm identifies other people with similar tastes to a target user and combines their ratings to make recommendations for that user.
+
+
+Create user-based model
+```{r}
+
+Umodel <- Recommender(data = books_train, method = "UBCF")
+
+Umodel
+```
+
+Predict data with testing data
+```{r}
+Upredict <- predict(Umodel, newdata = books_test, n = 5) %>% list()
+
+Upredict
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+
+# function created to display recommended similar books to users
+user_recc_books <- function(u){
+p <- Upredict[[1]]@items[[u]]
+p <- data.frame("guess" = as.factor(p))
+p <- inner_join(p, book_titles, by = c("guess" = "book_id")) %>% select(title)
+r <- data.frame("name" = as.factor(u))
+r <- inner_join(r, book_titles, by = c("name" = "book_id")) %>% select(title)
+print(paste("Books similar to --", r, "-- based on similar users"))
+return(as.list(p))
+}
+
+user_recc_books(5); user_recc_books(200); user_recc_books(18)
+
+```
+
+
+```{r}
+ubcf <- table(unlist(Upredict[[1]]@items)) %>% barplot(main = "Distribution of the number of items for UBCF")
+
+```
+Some books were recommended to users more than the others.
+
+
+### Summary
+
+Overall, building both reccommendation sysems gave a better understanding of how they work. On my end, the User Based CF took a longer time to compute than the IBCF. This was proven based on the fact that the book "Building Recommendation Systems with R" mentioned that the UBCF is a lazy method. It actually needs access to all of the data to perform a prediction hence why it does not work well with large matrices. On a whole, Item-item collaborative filtering had less error than user-user collaborative filtering. 
