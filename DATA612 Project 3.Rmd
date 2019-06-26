@@ -1,0 +1,143 @@
+---
+title: "DATA612 Week 3 Project 3"
+author: "Javern Wilson"
+date: "June 24, 2019"
+output: 
+  html_document:
+    theme: sandstone
+    highlight: kate
+---
+When a user gives feed back or rate to a certain book that they read, this collection of feedback can be represented in a form of a matrix. Where each row represents each users, while each column represents different books. Obviously the matrix will be sparse since not everyone is going to read every book, due to different interests.
+
+One strength of matrix factorization is the fact that it can incorporate implicit feedback, information that are not directly given but can be derived by analyzing user behavior. With this advantage, we can estimate and predict if a user is going to like a certain book that they never read. If that rating (assumed) is high, we can recommend that that book to the user.
+
+One method, Singular Value Method is what will be used going forward in this project.
+Let there be matrix A $M \times N$. The matrix can be viewed as a dot product between two matrix with each matrices having dimensions of $M \times K$ and $K \times N$. One downside of SVD is that it does not work well with missing values.
+
+
+```{r message=FALSE, warning=FALSE}
+library(recommenderlab)
+library(tidyverse)
+library(kableExtra)
+```
+
+Review of how user-item books were created in [Project(2)](https://rpubs.com/javernw/jwDATA612wk2Proj2).
+```{r}
+book_ratings <- read.csv("https://raw.githubusercontent.com/zygmuntz/goodbooks-10k/master/ratings.csv", sep = ",", header = T, stringsAsFactors = F)
+
+book_titles <- read.csv("https://raw.githubusercontent.com/zygmuntz/goodbooks-10k/master/books.csv", sep = ",", header = T, stringsAsFactors = F) %>% select(book_id, title)
+
+book_titles$book_id <- as.factor(book_titles$book_id)
+book_ratings$user_id <- as.factor(book_ratings$user_id)
+book_ratings$book_id <- as.factor(book_ratings$book_id)
+
+bmatrix <- as(book_ratings, "realRatingMatrix")
+bmatrix <- bmatrix[rowCounts(bmatrix) > 150, colCounts(bmatrix) > 300]
+bmatrix
+```
+
+
+#### Training and Test Sets
+
+So we are going to split the data.80:20, train and test respectively, keeping 20 items and running the evaluation once.
+```{r}
+## min(rowCounts(bmatrix)) = 75 so we can keep 25 items per user
+bmat_eval <- evaluationScheme(data = bmatrix, method = "split", train = 0.8, given = 25, goodRating = 3, k = 1) 
+```
+
+
+Let's see how the different sets are in the evalution
+```{r}
+eval_train <- getData(bmat_eval, "train") #train
+eval_train
+eval_known <- getData(bmat_eval, "known") # test data that we know 
+eval_known
+eval_unknown <- getData(bmat_eval, "unknown")#test data that we do not know
+eval_unknown
+
+```
+
+
+```{r}
+qplot(rowCounts(eval_unknown)) + geom_histogram(binwidth = 10) + ggtitle("Unknown Items by the readers")
+```
+
+Evaluating the recommender system with SVD. Build recommender:
+```{r}
+system.time({
+  
+books_svd <- Recommender(data = getData(bmat_eval, "train"), method = "SVD") 
+})
+books_svd
+
+```
+
+Compare it to IBCF
+
+```{r}
+
+system.time({
+imodel <- Recommender(data = getData(bmat_eval, "train"), method = "IBCF") 
+})
+imodel
+```
+The SVD method is clearly faster.
+
+
+#### Predict model
+```{r}
+#as topNlist
+books_svd_pred <- predict(object = books_svd, newdata = eval_known, n = 10) %>% list()
+books_svd_pred
+#as real rating matrix
+books_svd_pred_ <- predict(object = books_svd, newdata = eval_known, n = 10, type = "ratings")
+books_svd_pred_
+#ibcf
+booksibcf_pred <- predict(object = imodel, newdata = eval_known, n = 10, type = "ratings")
+```
+
+
+```{r message=FALSE, warning=FALSE}
+
+svd_pred <- function(i){
+p <- books_svd_pred[[1]]@ratings[[i]]
+r <- data.frame("name" = as.factor(i))
+r <- inner_join(r, book_titles, by = c("name" = "book_id")) %>% select(title)
+print(paste("Ratings for --", r))
+return(p)
+}
+```
+
+Let's pick some users and predict their ratings
+```{r}
+svd_pred(1)
+svd_pred(5)
+svd_pred(200)
+svd_pred(18)
+svd_pred(400)
+
+```
+
+
+#### To measure Accuracy
+
+SVD
+```{r}
+
+eval_svd_pred <- calcPredictionAccuracy(x = books_svd_pred_, data = eval_unknown, byUser = TRUE) 
+
+kable(head(eval_svd_pred)) %>% kable_styling(bootstrap_options = "striped", font_size = 12, full_width = F)
+```
+
+Item Based
+```{r}
+
+eval_ibcf_pred <- calcPredictionAccuracy(x = booksibcf_pred, data = eval_unknown, byUser = TRUE)
+
+kable(head(eval_ibcf_pred)) %>% kable_styling(bootstrap_options = "striped", font_size = 12, full_width = F)
+
+```
+
+#### Summary
+
+Collaborative Filtering takes a longer time to learn the data than does SVD. According to the evaluation of the predictions, the SVD model is more accurate with smaller error rate.
