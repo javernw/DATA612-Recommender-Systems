@@ -1,0 +1,264 @@
+---
+title: "DATA612 Project 4 | Accuracy and Beyond"
+author: "Javern Wilson"
+date: "June 29, 2019"
+output: 
+  html_notebook:
+    theme: paper
+    toc: true
+    code_folding: show
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+
+---
+
+## Dating Recommender System
+
+Some comments about the dataset:
+
+  1. There are 135,359 users and 168,791 profiles with 17,359,346 ratings.
+  2. userId is the user who provided rating.
+  3. profileID is the user who has been rated.
+  2. Ratings are on a scale of 1 - 10 where 10 is the highest. 
+  3. Only users who provide at least 20 ratings were included. User gender information is also available with idenfiers (M, F, U-Unknown).
+
+## Libraries
+
+```{r message=FALSE, warning=FALSE}
+
+library(recommenderlab)
+library(tidyverse)
+library(kableExtra)
+```
+
+
+## Data Pre-processing
+
+Import files <br/>
+
+The files are too large to upload to my github even when zipped so you can find it [here](http://www.occamslab.com/petricek/data/).
+
+```{r}
+d_ratings <- read.csv("C:/Users/Javern/Documents/Data Science MS/DATA612/libimseti-complete/libimseti/ratings.dat", header = F, sep = ",")
+
+colnames(d_ratings) <- c("userId", "profileId", "rating")
+d_ratings$userId <- as.factor(d_ratings$userId)
+d_ratings$profileId <- as.factor(d_ratings$profileId)
+
+gender <- read.csv("C:/Users/Javern/Documents/Data Science MS/DATA612/libimseti-complete/libimseti/gender.dat", header = F, sep = ",")
+
+colnames(gender) <- c("userId", "type")
+gender$userId <- as.factor(gender$userId)
+
+```
+
+
+## EDA {.tabset .tabset-fade}
+
+### Preview of datasets
+```{r}
+head(d_ratings); head(gender)
+```
+
+
+### Top 10 users who provided the most ratings
+```{r}
+d_ratings %>% 
+  group_by(userId)%>% 
+  summarise(user_count = length(userId)) %>% 
+  top_n(10) %>% 
+  ggplot(aes(userId, user_count, fill = userId)) + geom_bar(stat = "identity") + geom_text(aes(label=user_count), vjust=-0.3, size=3.5)
+
+```
+
+
+### Top rated profiles
+```{r}
+d_ratings %>% 
+  group_by(profileId) %>% 
+  summarise(profile_count = length(profileId)) %>% 
+  top_n(10) -> topprofiles
+  ggplot(topprofiles, aes(profileId, profile_count, fill = profileId)) + 
+    geom_bar(stat = "identity") + 
+    geom_text(aes(label=profile_count), vjust=-0.3, size=3.5)
+```
+
+### How scores are distributed
+```{r}
+d_ratings %>% 
+   group_by(rating)%>% 
+   summarise(rating_count = sum(rating)) %>% 
+   ggplot(aes(rating, rating_count, fill = rating)) + geom_bar(stat = "identity") +   scale_x_continuous(breaks = seq(1, 10)) + geom_text(aes(label=rating_count), vjust=-0.3, size=3.5)
+```
+
+
+### Gender ratio
+
+```{r}
+gender %>% 
+  group_by(type) %>% 
+  summarise(type_count = length(type)) %>% 
+  ggplot(aes(type, type_count, fill = type)) + geom_bar(stat = "identity", color = "purple")
+  
+```
+
+
+## Dating Matrix
+
+As we move forward in the analysis, the ratings dataframe will be converted into a matrix to build and evaluate the recommendation systems.
+
+```{r}
+dmatrix <- as(d_ratings, "realRatingMatrix")
+dmatrix
+```
+
+Dimensions of the matrix
+```{r}
+dim(dmatrix@data)
+```
+
+Size of matrix data
+```{r}
+object.size(dmatrix)
+```
+About 228 MB
+
+
+The file is large so we'll cut down on the number of attributes.
+```{r}
+# users who rated at least 500 profiles 
+# profiles that are rated at least 800 times
+
+dmatrix <- dmatrix[rowCounts(dmatrix) > 500, colCounts(dmatrix) > 800]
+dmatrix
+```
+
+#### Average Profile Ratings
+
+```{r}
+avg_profile_ratings <- data.frame("avg_rating" = colMeans(dmatrix)) %>% 
+  ggplot(aes(x = avg_rating)) + 
+  geom_histogram(color = "red", fill = "lightblue") + 
+  ggtitle("Distribution of Average Ratings for Profiles")
+
+avg_profile_ratings
+```
+
+The distribution is nearly normal with most rating falling between 5 and 7.5.
+
+#### How similar are the first 300 users?
+```{r}
+sim <- similarity(dmatrix[1:300, ], method = "cosine", which = "users")
+image(as.matrix(sim), main = "User Similarity")
+
+```
+
+#### How similar are the first 300 profiles?
+```{r}
+
+sim2 <- similarity(dmatrix[, 1:300], method = "cosine", which = "items")
+image(as.matrix(sim2), main = "Profile Similarity")
+
+```
+
+## Training and Test Sets
+
+So we are going to split the data 90:10, train and test respectively, keeping 3 items and running the evaluation 4 times.
+```{r}
+
+#min(rowCounts(dmatrix))= 6 so we can keep 5 items per user
+dmat_eval <- evaluationScheme(data = dmatrix, method = "split", train = 0.9, given = 5, goodRating = 5, k = 4) 
+dmat_eval
+```
+
+## Compare Recommender System Algorithms
+
+```{r}
+algorithms <- list(
+  IBCF = list(name = "IBCF", param = list(method = "cosine")),
+  UBCF = list(name = "UBCF", param = list(method = "cosine")),
+  SVD = list(name = "SVD", param = list(k = 30)),
+  POPULAR = list(name = "POPULAR", param = NULL), #serendipity
+  RANDOM = list(name = "RANDOM", param = NULL)
+)
+```
+
+Test the models by varying the number of profiles to recommend.
+```{r}
+# run algorithms, predict next n profile
+eval_results <- evaluate(dmat_eval, algorithms, type = "topNList", n = c(1, 3, 5, 10, 15, 20))
+
+averages <- avg(eval_results)
+```
+
+IBCF took approximately 25 minutes to run and do prediction.
+
+#### Results
+
+TP - True Positive
+FP - False Positive
+FN - False Negative
+TN - True Negative
+
+```{r}
+kable(averages$IBCF) %>% kable_styling(bootstrap_options = c("striped", "bordered"), full_width = F, font_size = 11) %>% add_header_above(c(" ", "IBCF" = 8))
+kable(averages$UBCF) %>% kable_styling(bootstrap_options = c("striped", "bordered"), full_width = F, font_size = 11) %>% add_header_above(c(" ", "UBCF" = 8))
+kable(averages$SVD) %>% kable_styling(bootstrap_options = c("striped", "bordered"), full_width = F, font_size = 11) %>% add_header_above(c(" ", "SVD" = 8))
+kable(averages$POPULAR) %>% kable_styling(bootstrap_options = c("striped", "bordered"), full_width = F, font_size = 11) %>% add_header_above(c(" ", "POPULAR" = 8))
+kable(averages$RANDOM) %>% kable_styling(bootstrap_options = c("striped", "bordered"), full_width = F, font_size = 11) %>% add_header_above(c(" ", "RANDOM" = 8))
+```
+
+
+#### ROC curve
+
+The ROC curve is created by plotting the true positive rate against the false positive rate. The closer an ROC curve is to the upper left corner, the more efficient is the test.
+
+```{r}
+plot(eval_results, annotate = T, legend="topleft")
+title("ROC Curve")
+```
+
+Based on the graph visualization above, the UBCF is better than the others.
+
+#### Precision-Recall
+
+Precision expresses the proportion of the data points our model says was relevant and are actually were relevant. Calculated as: **TP / (TP + FP)**
+
+Recall expresses the ability to find all relevant instances in a dataset or the model's ability to find all the data points of interest in a dataset. **TP / (TP + FN)**
+
+The closer the curve or line is to the top right, the better the performance of the algorithm.
+
+```{r}
+# precision / recall
+plot(eval_results, "prec/rec", annotate = 2)
+title("Precision-recall")
+```
+
+User Based model is still better than the other algorithms.
+
+
+
+```{r}
+#Predict top-N recommendation lists
+eval_results2 <- evaluate(dmat_eval, algorithms, type = "ratings")
+```
+
+```{r}
+avg(eval_results2)
+```
+
+#### Online Evaluation
+
+As noted, offline evaluations use precompiled offline datasets from which data was removed hence evaluations are used to analyze the algorthims' ablity to predict missing data. On the other hand, in online evaluations, recommendations are shown to real users of the system during their session and so users do not rate recommendations but the recommender system observes how often a user accepts a recommendation. One metric that could be used to evaluate online evaluation is **click-through rate (CTR)**. This measures the ratio of clicks to the number of recommendation lists provided. So for instance if the recommender recommends 1000 profiles and the user clicks only 5  then the CTR would be 0.5%.
+
+## Summary
+
+Based on the output shown for each algorithms, the IBCF took a longer time to learn the data than the others but took a shorter time to predict the data. According to the error rates, Popular has the lowest RMSE which means that it performed the best with lower error rates. However, as shown in the visualizations, UBCF performed best. The Random algorithm continued to perform worst through out the process.
+
+## References
+
+https://towardsdatascience.com/beyond-accuracy-precision-and-recall-3da06bea9f6c
+https://acutecaretesting.org/en/articles/roc-curves-what-are-they-and-how-are-they-used
+https://pdfs.semanticscholar.org/94c2/00cec1e2f9547ea6063e08019f72895bfba8.pdf
+https://link.springer.com/article/10.1007/s13042-017-0762-9
