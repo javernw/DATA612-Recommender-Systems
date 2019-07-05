@@ -1,0 +1,41 @@
+---
+title: "DATA612 Research Discussion 4"
+author: "Javern Wilson"
+date: "July 4, 2019"
+output: 
+  html_document:
+    theme: paper
+    highlight: kate
+---
+
+## Mitigating Bias in Recommender Systems
+
+**Question: Consider how to counter the radicalizing effects of recommender systems or ways to prevent algorithmic discrimination.**
+
+As we know, recommender systems are used to make decisions that may affect users such as job applications, getting a loan, movie selection and the like. Such decisions can affect human rights and undermine the public trust. If a user's opinion is negative, it is likely to thwart the development of machine learning recommender systems and its positive social and economic potential. Also, users of different ages or genders may not obtain similar utility from the system, especially if their group is a relatively small subset of the user base. On the other hand, when designed well, machine learning systems can help mitgiate the type of human bias in the decision making.
+ 
+Ways to consider the prevention of algorithmic discrimination include:
+
+  + Active Inclusion
+  
+    - The development and design of machine learning applications particularly recommender systems, must involve a diversity of input (training data) when it comes to the norms and values of the targeted population. Factors on this aspect concerns how diverse is the pool of designers involved in building system. Also if there are any groups that may be at an advantage or disadvantage when the system is deployed.
+
+    
+  + Right to Understanding
+  
+    - The system must be able to explain how it came to its final conclusion when it make a decision. That is, how much of the data is clear and what aspect of the decision making is algorithmic. From developers' perpective, how much of the code is available to the public for viewing so they can provide methods for improvement and inclusion.
+  
+  
+  + Fairness 
+  
+    - Implementing machine learning techniques where steps include detecting and correcting data bias ensuring that datasets represent the users that will be affected. For example, recommender systems that filter through job applications should not use training data that embeds existing discriminatory practices against women or minorities. Or when a developer is building an application to determine loan eligibility for mortgages, they should consult the public and non-profit organizations who work on housing issues first before going forward. 
+
+
+Identifying and eliminating bias or discrimination that can result from machine learning applications is not an easy task. However, developers can work together with relevant stakeholders to leverage machine learning in a way that includes and benefits people,
+and prevents discrimination. 
+
+### Sources
+
+  + [UP NEXT: A BETTER RECOMMENDATION SYSTEM](http://proceedings.mlr.press/v81/ekstrand18b/ekstrand18b.pdf)
+  
+  + [How to Prevent Discriminatory Outcomes in Machine Learning](http://www3.weforum.org/docs/WEF_40065_White_Paper_How_to_Prevent_Discriminatory_Outcomes_in_Machine_Learning.pdf)
