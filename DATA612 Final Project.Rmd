@@ -1,0 +1,446 @@
+---
+title: "DATA612 Final Project - Anime Recommendation System"
+author: "Javern Wilson"
+date: "July 8, 2019"
+output:
+  html_document:
+    toc: true
+    code_folding: show
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    theme: cosmo
+    highlight: pygment
+
+---
+<html>
+<head>
+<style>
+h1 {
+  text-align: center;
+  text-transform: uppercase;
+  color: #4CAF50;
+  font-weight:bold;
+}
+
+p {
+  text-indent: 50px;
+  text-align: justify;
+  letter-spacing: 2px;
+}
+
+a {
+  text-decoration: none;
+  color: #008CBA;
+}
+</style>
+</head>
+</html>
+
+![](https://github.com/javernw/DATA612-Recommender-Systems/blob/master/anime2.jpg?raw=true)
+
+## 1. Introduction
+
+MyAnimeList, also known as MAL, is an anime and manga social networking website which contains a database where users can organize and add different anime to their list. When added to a list the anime items are given a rating after being watched. This process helps in finding users who have similar tastes. This project will explore the contents of this dataset to gain insights. Later on, an item-item collaborative filtering recommeder system will be built to recommend and predict anime for users. Analysis and evaluation will be done on the recommender system to see how well it performs when recommending items.
+
+The data was obtained from [Kaggle.com](https://www.kaggle.com/CooperUnion/anime-recommendations-database) and contains information from 73,516 users who may have given a rating to one of 12,294 anime items. The scores/ratings range from 1 - 10 with 10 being the best. If the rating is -1, it means that the user did not provide a rating for that item.
+
+
+## 2. Objective / Motivation
+
+The goal of this project is to recommend and make predictions about a user's taste. Specifically what a user will want to watch or buy in the future.
+In order to do such predictions, large amounts of user data is needed to find
+patterns and associate prior tastes with future choices. Often times, it is difficult to provide good recommendations when users' information is limited. Of course it is better when users give their information explicitly but not as much as we'd like. Therefore sparsity is introduced. However, in order to produce meaningful recommendations, I propose three techniques: (1) Item-item collaborative filtering, (2) Single Value Decomposition (SVD) and (3) Hybrid Recommender System. The system will be implemented in R using a training and test set with a ratio of 80%:20% respectively. The error for each model will be reported as root mean square error (RMSE) as a measure for perfomance. 
+
+## 3. My Anime List Recommender System
+
+### 3.1 Data Pre-processing {.tabset .tabset-fade .tabset-pills}
+
+```{r load libraries, include=FALSE}
+library(kableExtra)
+library(recommenderlab)
+library(tidyverse)
+
+```
+
+
+#### 3.1.1 Import files
+```{r}
+
+anime_ratings <- read.csv("anime-recommendations-database/rating.csv", header = T)
+glimpse(anime_ratings)
+
+anime_names <- read.csv("anime-recommendations-database/anime.csv", header = T)
+glimpse(anime_names)
+```
+
+#### 3.1.2 Clean Data
+
+According to the description found with the data, the ratings are from 1 - 10. Notice that if a user did not rate an item, the item received a rating of -1. For simplicity, I will change -1 to NA to indicate the rating is missing. Added to that, I will aslo change the data type for some variables.
+
+```{r}
+anime_ratings$rating[anime_ratings$rating == -1] <- NA
+anime_sp <- anime_ratings
+anime_ratings$user_id <- as.factor(anime_ratings$user_id)
+anime_ratings$anime_id <- as.factor(anime_ratings$anime_id)
+anime_names$anime_id <- as.factor(anime_names$anime_id)
+anime_names$name <- as.character(anime_names$name)
+anime_names$type <- as.character(anime_names$type)
+anime_names$genre <- as.character(anime_names$genre)
+```
+
+
+
+### 3.2 Exploratory Data Analysis
+
+Before we create a matrix to build the recommenders, let's gather some insights from the data.
+
+#### 3.2.1 Highest rated items
+```{r}
+anime_names %>% arrange(desc(rating)) %>% 
+  top_n(7) %>% kable() %>% kable_styling("striped", font_size = 10, full_width = F)
+
+```
+
+#### 3.2.2 Most watched type of show
+
+```{r}
+anime_names %>% count(type)%>% 
+  ggplot(aes(x = type, y = n)) + 
+  geom_bar(stat = "identity", fill = "darkgreen" ) + 
+  geom_text(aes(label=n), vjust= -0.6, color="black", size=3.5) +
+  theme_minimal()
+  #kable_styling("striped", font_size = 13, full_width = F)
+
+```
+<br/> About 25 anime items type were unknown and most of them are under the TV category.
+
+**Note**
+
+<br/>ONA -  Original Net Animation (ONA) is an anime that is directly released onto the Internet
+<br/>OVA - Original Video Animation (OVA) is an animated film or series made specially for release in home-video formats
+
+
+#### 3.2.3 Anime with the most members
+
+```{r}
+anime_names %>% arrange(desc(members)) %>% 
+  top_n(10) %>% kable() %>% kable_styling("striped", font_size = 10, full_width = F)
+
+```
+
+
+Let's move on to creating a User-Item matrix 
+
+### 3.3 User-Item Matrix
+
+```{r}
+#convert anime matrix to a real rating matrix
+a_mat <- as(anime_ratings, "realRatingMatrix")
+a_mat
+```
+
+A lot of the data is sparse and uses a lot of memory. For instance the size of this matrix is about 99 Mb.
+```{r}
+object.size(a_mat)
+```
+
+I will cut the size of the matrix down where it will only contain data for users who rated at least 500 anime shows and shows that were rated at least 1000 times. 
+
+```{r}
+a_mat <- a_mat[rowCounts(a_mat) > 500, colCounts(a_mat) > 1000]
+a_mat
+
+```
+```{r}
+object.size(a_mat)
+```
+### How ratings are distributed
+
+```{r}
+a_ratings <- as.data.frame(table(as.vector(a_mat@data@x)))
+
+
+ggplot(a_ratings, aes(x = Var1, y = Freq, fill = Var1)) + 
+  geom_bar(stat = "identity") + 
+  ggtitle("Distribution of Ratings for Anime Items") +
+  geom_text(aes(label=Freq), vjust= -0.6, color="black", size=3.5) +
+  theme(legend.position="none") + xlab("Rating Score") + ylab("Fequency")
+  
+```
+<br/>Based on the users providing the ratings, it seems the shows are really good because majority are rated 8 and up.
+
+
+<br/>Summary of ratings
+```{r}
+summary(a_mat@data@x)
+```
+
+
+
+I will now normalize the data to eliminate bias therefore average rating would be 0.
+
+```{r}
+#normalize
+a_mat <- normalize(a_mat)
+
+```
+
+
+```{r}
+image(a_mat[1:100, 1:100], main = "First 100 users and anime items: Top Anime")
+```
+
+```{r}
+avg_anime_ratings <- data.frame("avg_rating" = colMeans(a_mat)) %>% 
+  ggplot(aes(x = avg_rating)) + 
+  geom_histogram(color = "black", fill = "steelblue") + 
+  theme( axis.line = element_line(colour = "darkblue", size = 1, linetype = "solid"))+
+  ggtitle("Distribution of Average Ratings for Anime Shows")
+avg_anime_ratings
+```
+<br/> The distribution is left skewed however most of the ratings are 0.
+
+### 3.4 Similarity
+
+Similarity among the first 50 users
+```{r}
+simA <- similarity(a_mat[1:100, ], method = "cosine", which = "users")
+image(as.matrix(simA), main = "User Similarity")
+
+```
+
+Similarity among the first 50 anime items
+```{r}
+simB <- similarity(a_mat[, 1:100], method = "cosine", which = "items")
+image(as.matrix(simB), main = "Item Similarity")
+```
+
+<br/> Based on the similarity plots, items have more in common than users do with each other. 
+
+
+### 3.5 Building Recommender Systems {.tabset .tabset-fade .tabset-pills}
+
+Recommender Systems are systems that aim to predict users' interests and recommend items that are likely to interest them. They help uers make decisions by discovering new and relevant items. As mentioned earlier, we will look at the way three types of recommenders work.
+
+At first we will divide the data into training and test sets so that the recommender algorithms can learn the data then try to predict releant outcomes.
+
+#### Training and Test sets
+
+```{r}
+#min(rowCounts(a_mat)= 4 so we can keep 4 items per user
+anime_eval <- evaluationScheme(data = a_mat, method = "split", train = 0.8, given = 4, goodRating = 5, k = 4) 
+anime_eval
+
+```
+
+
+#### 3.5.1 Item-Item Collaborative Filtering
+
+##### Item based recommender
+```{r}
+anime_item_recc <- Recommender(data = getData(anime_eval, "train"), method = "IBCF")
+anime_item_recc
+```
+
+##### Predict 
+```{r}
+anime_pred <- predict(object = anime_item_recc, newdata = getData(anime_eval, "known"), n = 10)
+
+anime_predr <- predict(object = anime_item_recc, newdata = getData(anime_eval, "known"), type = "ratings")
+```
+
+Let's see for the first 4 users.
+
+```{r}
+# first 4 users recommendations
+anime_pred@items[1:8]
+```
+
+Notice that for some users, items were not recommended to them. Here we have the *cold start problem*. The recommender does not have adequate information about a user or an item in order to make relevant predictions. This happens often with collaborative filtering recommender systems and such problems reduces performance. The profile of such new user or item will be empty since he has not rated any item hence, their taste is not known to the system.
+
+Let's see what were actually recommended for the some users.
+```{r}
+# function to match anime id with names of anime items
+item_recc_anime <- function(i){
+p <- anime_pred@items[[i]]
+p <- data.frame("guess" = as.factor(p))
+p <- inner_join(p, anime_names, by = c("guess" = "anime_id")) %>% select(name, type)
+return(as.data.frame(p))
+}
+```
+
+```{r message=FALSE, warning=FALSE}
+
+ for_users <- c(20, 3, 2, 10)
+lapply(for_users, item_recc_anime)
+```
+
+
+#### 3.5.2 Single Value Decomposition
+
+```{r}
+
+anime_SVD_recc <- Recommender(data = getData(anime_eval, "train"), method = "SVD") 
+anime_SVD_recc
+
+```
+
+
+##### Predict
+```{r}
+anime_svd_pred <- predict(object = anime_SVD_recc, newdata = getData(anime_eval, "known"), n = 10) 
+
+anime_svd_predr <- predict(object = anime_SVD_recc, newdata = getData(anime_eval, "known"), type = "ratings") 
+
+```
+Lets see what SVD recommends
+
+```{r message=TRUE, warning=TRUE}
+# first 4 users recommendations
+anime_svd_pred@items[1:8]
+
+# function to match anime id with names of anime items
+svd_recc_anime <- function(i){
+p <- anime_svd_pred@items[[i]]
+p <- data.frame("guess" = as.factor(p))
+p <- inner_join(p, anime_names, by = c("guess" = "anime_id")) %>% select(name, type)
+return(as.data.frame(p))
+}
+
+
+```
+
+Unlike Item recommender, the SVD algorithm provided a recommendation for every user. In general, SVD is a commonly used method to estimate missing data in a data matrix. When you consider that recommender systems are essentially trying to estimate missing ratings for users, the use of SVD makes sense. Comparing to the IBCF, some are the same.
+
+
+Now let's have a look at what the numbers match to.
+```{r}
+for_users <- c(20, 3, 2, 10)
+lapply(for_users, svd_recc_anime)
+```
+
+
+#### 3.5.2 Hybrid Recommender
+The ultimate hybrid recommender containing Item-Item CF, grouped with what the user previously liked, diversity and popular options.
+```{r}
+
+anime_hybrid_recc <- HybridRecommender(
+  Recommender(data = getData(anime_eval, "train"), method = "IBCF"),
+  Recommender(data = getData(anime_eval, "train"), method = "POPULAR"),
+  Recommender(data = getData(anime_eval, "train"), method = "RERECOMMEND"),
+  Recommender(data = getData(anime_eval, "train"), method = "RANDOM"), #diversity
+  weights = c(0.5, 0.3, 0.1, 0.1)
+)
+anime_hybrid_recc
+```
+
+```{r}
+anime_hybrid_pred <- predict(object = anime_hybrid_recc, newdata = getData(anime_eval, "known"), n = 10) 
+
+anime_hybrid_predr <- predict(object = anime_hybrid_recc, newdata = getData(anime_eval, "known"), type = "ratings") 
+
+```
+
+
+```{r}
+# first 4 users recommendations
+anime_hybrid_pred@items[1:8]
+
+```
+<br/>Some of the items recommended by `IBCF` and `SVD` did repeat in the hybrid recommeder.
+
+Let's see the actual items recommended
+```{r message=TRUE, warning=TRUE}
+# function to match anime id with names of anime items
+hybrid_recc_anime <- function(i){
+p <- anime_hybrid_pred@items[[i]]
+p <- data.frame("guess" = as.factor(p))
+p <- inner_join(p, anime_names, by = c("guess" = "anime_id")) %>% select(name, type)
+return(as.data.frame(p))
+}
+
+```
+
+
+```{r}
+
+for_users <- c(20, 3, 2, 10)
+lapply(for_users, hybrid_recc_anime)
+```
+
+
+### 3.7 Evaluation
+
+**ITEM**
+```{r}
+anime_item_acc1 <- calcPredictionAccuracy(x = anime_pred, data = getData(anime_eval, "unknown"), given = 4, goodRating = 5)
+anime_item_acc2 <- calcPredictionAccuracy(x = anime_predr, data = getData(anime_eval, "unknown"))
+```
+
+**SVD**
+```{r}
+anime_svd_acc1 <- calcPredictionAccuracy(x = anime_svd_pred, data = getData(anime_eval, "unknown"), given = 4, goodRating = 5)
+anime_svd_acc2 <- calcPredictionAccuracy(x = anime_svd_predr, data = getData(anime_eval, "unknown"))
+```
+
+**HYBRID**
+```{r}
+anime_hy_acc1 <- calcPredictionAccuracy(x = anime_hybrid_pred, data = getData(anime_eval, "unknown"), given = 4, goodRating = 5)
+anime_hy_acc2 <- calcPredictionAccuracy(x = anime_hybrid_predr, data = getData(anime_eval, "unknown"))
+```
+
+TopN
+```{r}
+kable(rbind(anime_item_acc1, anime_svd_acc1, anime_hy_acc1)) %>% kable_styling(c("striped", "hovered", "bordered"), font_size = 12, full_width = F) %>% add_header_above(c("Recommender", "TopN Accuracy" = 8))
+```
+
+
+Ratings
+```{r}
+kable(rbind(anime_item_acc2, anime_svd_acc2, anime_hy_acc2)) %>% kable_styling(c("striped", "hovered", "bordered"), font_size = 12, full_width = 80) %>% add_header_above(c("Recommender", "Ratings Accuracy" = 3))
+```
+To sum up this table, the lower the numbers, the better the performance of the model. 
+
+##### Comparing Models
+
+```{r message=TRUE, warning=TRUE}
+models_to_evaluate <- list(
+  IBCF = list(name = "IBCF", param = list(method = "cosine")),
+  SVD = list(name = "SVD", param = list(k = 30)),
+  POPULAR = list(name = "POPULAR", param = NULL),
+  RANDOM = list(name = "RANDOM", param = NULL)
+)
+results <- evaluate(anime_eval, method = models_to_evaluate, n = c(1, 3, 5, 15, 20))
+```
+
+**ROC Curve**
+
+```{r}
+plot(results, annotate = T, legend = "topleft") 
+title("ROC Curve")
+
+```
+<br/> The closer the curve is to the top right, it indicates a better performance.
+
+
+**Precision-Recall**
+```{r}
+plot(results, "prec/rec", annotate = T, legend = "bottomright")
+title("Pecision-Recall")
+```
+<br/>The closer the curve is to the top left, the better the performance. In this case, the Singular Value Decomposition algorithm performed best.
+
+## 4. Conclusion
+
+Overall, the Hybrid Recommender performed best due to it having the lowest error score. This was expected because when you have a hybrid recommender, the algorithms make up for the shortcomings of each other. As mentioned earlier, Item based recommender had the trouble of recommending items for some new users. This is a problem for collaborative filtering recommenders due to a of lack of enough information where only a few of the total number of items available in a database rated by users. Therefore, there comes the inability to locate successful neighbors and finally, the generation of weak recommendations. 
+
+To conclude, recommender systems open new opportunities of retrieving personalized information on the web. It also helps to alleviate the problem of information overload which is a very common circumstance with information retrieval systems and enables users to have access to products and services which are not readily available to users on the system. This prject discussed the three recommendation techniques and highlighted their strengths and weaknesses. Various learning algorithms used in generating the recommendation models and evaluation metrics were used to measure the quality and performance of the algorithms discussed.
+
+
+
+## 5. References
+
+  + https://www.scottfreitas.com/assets/papers/Recommender_System.pdf
+  + https://www.sciencedirect.com/science/article/pii/S1110866515000341
+  + Gorakala, Suresh K., and Michele Usuelli. Building a Recommendation System with R: Learn the Art of Building Robust and Powerful Recommendation Engines Using R. Packt Publishing, 2015.
